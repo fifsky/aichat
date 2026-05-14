@@ -43,7 +43,7 @@ async function createMcpClient(name: string, server: McpServerConfig): Promise<M
       transport: new StdioClientTransport({
         command: server.command,
         args: server.args ?? [],
-        env: { ...process.env, ...(server.env ?? {}) } as Record<string, string>,
+        env: { ...process.env, ...server.env } as Record<string, string>,
       }),
     });
   }

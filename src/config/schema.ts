@@ -22,32 +22,32 @@ const mcpServerSchema = z.discriminatedUnion("type", [
 ]);
 
 export const appConfigSchema = z.object({
-  provider: z.object({
-    name: z.string().default("deepseek"),
-    baseURL: z.string().url().default("https://api.deepseek.com"),
-    apiKey: z.string().default(""),
-    model: z.string().default("deepseek-v4-pro"),
-    thinking: z
-      .object({
-        enabled: z.boolean().default(true),
-        reasoningEffort: z.string().default("high"),
-        showReasoning: z.boolean().default(true),
-      })
-      .default({ enabled: true, reasoningEffort: "high", showReasoning: true }),
-  }).default({
-    name: "deepseek",
-    baseURL: "https://api.deepseek.com",
-    apiKey: "",
-    model: "deepseek-v4-pro",
-    thinking: { enabled: true, reasoningEffort: "high", showReasoning: true },
-  }),
+  provider: z
+    .object({
+      name: z.string().default("deepseek"),
+      baseURL: z.url().default("https://api.deepseek.com"),
+      apiKey: z.string().default(""),
+      model: z.string().default("deepseek-v4-pro"),
+      thinking: z
+        .object({
+          enabled: z.boolean().default(true),
+          reasoningEffort: z.string().default("high"),
+          showReasoning: z.boolean().default(true),
+        })
+        .default({ enabled: true, reasoningEffort: "high", showReasoning: true }),
+    })
+    .default({
+      name: "deepseek",
+      baseURL: "https://api.deepseek.com",
+      apiKey: "",
+      model: "deepseek-v4-pro",
+      thinking: { enabled: true, reasoningEffort: "high", showReasoning: true },
+    }),
   mcpServers: z.record(z.string(), mcpServerSchema).default({}),
   skills: z
     .object({
       enabled: z.boolean().default(true),
-      dirs: z
-        .array(z.string())
-        .default(["~/.codex/skills", "~/.agents/skills", "./skills"]),
+      dirs: z.array(z.string()).default(["~/.codex/skills", "~/.agents/skills", "./skills"]),
     })
     .default({ enabled: true, dirs: ["~/.codex/skills", "~/.agents/skills", "./skills"] }),
   tools: z

@@ -1,4 +1,4 @@
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { parseDocument } from "yaml";
 import type { AppConfig, Skill } from "../types";
 import { expandHome } from "../config/paths";
@@ -30,7 +30,7 @@ export async function loadSkills(config: AppConfig): Promise<Skill[]> {
   }
 
   const skills: Skill[] = [];
-  for (const file of [...new Set(files)]) {
+  for (const file of new Set(files)) {
     const parsed = await parseSkillFile(file);
     if (parsed) {
       skills.push(parsed);
