@@ -9,9 +9,11 @@ export class TerminalRenderer {
   private wroteReasoning = false;
   private wroteOutput = false;
   private separatedAnswer = false;
-  private readonly markdown = new StreamingMarkdownRenderer((value) => this.write(value));
+  private readonly markdown: StreamingMarkdownRenderer;
 
-  constructor(private readonly showReasoning: boolean) {}
+  constructor(private readonly showReasoning: boolean) {
+    this.markdown = new StreamingMarkdownRenderer((value) => this.write(value), supportsTerminalRedraw());
+  }
 
   appendText(delta: string): void {
     this.text += delta;
@@ -65,9 +67,14 @@ export class TerminalRenderer {
 
 class StreamingMarkdownRenderer {
   private buffer = "";
+  private activeFence: ActiveFence | null = null;
+  private activeTable: ActiveTable | null = null;
   hasOutput = false;
 
-  constructor(private readonly write: (value: string) => void) {}
+  constructor(
+    private readonly write: (value: string) => void,
+    private readonly canRedraw: boolean,
+  ) {}
 
   append(delta: string): void {
     this.buffer += delta;
@@ -75,12 +82,37 @@ class StreamingMarkdownRenderer {
   }
 
   finish(): void {
+    this.flushCompleteBlocks();
+    this.finishActiveFence();
+    this.finishActiveTable();
     this.flush(this.buffer);
     this.buffer = "";
   }
 
   private flushCompleteBlocks(): void {
     while (true) {
+      if (this.activeFence != null) {
+        if (!this.flushActiveFenceLines()) {
+          return;
+        }
+        continue;
+      }
+
+      if (this.activeTable != null) {
+        if (!this.flushActiveTableLines()) {
+          return;
+        }
+        continue;
+      }
+
+      if (this.startFenceIfReady()) {
+        continue;
+      }
+
+      if (this.startTablePreviewIfReady()) {
+        continue;
+      }
+
       const next = takeCompleteBlock(this.buffer);
       if (next == null) {
         return;
@@ -90,11 +122,192 @@ class StreamingMarkdownRenderer {
     }
   }
 
+  private startFenceIfReady(): boolean {
+    const lines = splitLines(this.buffer);
+    const first = lines[0];
+    if (first == null || !first.ended || !isFenceStart(first.text)) {
+      return false;
+    }
+
+    this.activeFence = {
+      opening: first.raw,
+      marker: first.text.trimStart().startsWith("~~~") ? "~~~" : "```",
+      content: "",
+      previewOutput: "",
+    };
+    this.buffer = this.buffer.slice(first.raw.length);
+    return true;
+  }
+
+  private flushActiveFenceLines(): boolean {
+    const fence = this.activeFence;
+    if (fence == null) {
+      return true;
+    }
+
+    while (true) {
+      const line = splitLines(this.buffer)[0];
+      if (line == null || !line.ended) {
+        return false;
+      }
+
+      this.buffer = this.buffer.slice(line.raw.length);
+      if (line.text.trimStart().startsWith(fence.marker)) {
+        this.finishFenceWithOutput(renderMarkdown(fence.opening + fence.content + line.raw));
+        this.activeFence = null;
+        return true;
+      }
+
+      fence.content += line.raw;
+      this.renderFencePreview(fence);
+    }
+  }
+
+  private renderFencePreview(fence: ActiveFence): void {
+    const output = trimFencePreviewOutput(renderMarkdown(fence.opening + fence.content + `${fence.marker}\n`));
+    this.writeIncrementalPreview(fence.previewOutput, output);
+    fence.previewOutput = output;
+  }
+
+  private finishActiveFence(): void {
+    const fence = this.activeFence;
+    if (fence == null) {
+      return;
+    }
+
+    fence.content += this.buffer;
+    this.buffer = "";
+    const output = renderMarkdown(fence.opening + fence.content);
+    this.finishFenceWithOutput(output);
+    this.activeFence = null;
+  }
+
+  private finishFenceWithOutput(output: string): void {
+    const previewOutput = this.activeFence?.previewOutput ?? "";
+    if (previewOutput.length === 0) {
+      this.writeRendered(output);
+      return;
+    }
+
+    if (output.startsWith(previewOutput)) {
+      this.writeRendered(output.slice(previewOutput.length));
+      return;
+    }
+
+    if (this.canRedraw) {
+      this.redrawPreview(previewOutput, output);
+    }
+  }
+
+  private startTablePreviewIfReady(): boolean {
+    if (!this.canRedraw) {
+      return false;
+    }
+
+    const lines = splitLines(this.buffer);
+    const header = lines[0];
+    const separator = lines[1];
+    if (header == null || separator == null || !header.ended || !separator.ended) {
+      return false;
+    }
+    if (!isTableHeader(header.text, separator.text)) {
+      return false;
+    }
+
+    this.activeTable = {
+      markdown: header.raw + separator.raw,
+      previewOutput: "",
+    };
+    this.buffer = this.buffer.slice(header.raw.length + separator.raw.length);
+    this.renderTablePreview();
+    return true;
+  }
+
+  private flushActiveTableLines(): boolean {
+    const table = this.activeTable;
+    if (table == null) {
+      return true;
+    }
+
+    while (true) {
+      const line = splitLines(this.buffer)[0];
+      if (line == null || !line.ended) {
+        return false;
+      }
+      if (isBlank(line.text) || !line.text.includes("|")) {
+        this.finishActiveTable();
+        return true;
+      }
+
+      table.markdown += line.raw;
+      this.buffer = this.buffer.slice(line.raw.length);
+      this.renderTablePreview();
+    }
+  }
+
+  private renderTablePreview(): void {
+    const table = this.activeTable;
+    if (table == null) {
+      return;
+    }
+
+    const output = renderMarkdown(table.markdown);
+    this.redrawPreview(table.previewOutput, output);
+    table.previewOutput = output;
+  }
+
+  private finishActiveTable(): void {
+    const table = this.activeTable;
+    if (table == null) {
+      return;
+    }
+
+    if (this.buffer.length > 0) {
+      const line = splitLines(this.buffer)[0];
+      if (line != null && !line.ended && !isBlank(line.text) && line.text.includes("|")) {
+        table.markdown += line.raw;
+        this.buffer = this.buffer.slice(line.raw.length);
+      }
+    }
+
+    const output = renderMarkdown(table.markdown);
+    if (output !== table.previewOutput) {
+      this.redrawPreview(table.previewOutput, output);
+    }
+    this.activeTable = null;
+  }
+
+  private writeIncrementalPreview(previous: string, next: string): void {
+    if (next.length === 0 || next === previous) {
+      return;
+    }
+    if (next.startsWith(previous)) {
+      this.writeRendered(next.slice(previous.length));
+      return;
+    }
+    if (this.canRedraw) {
+      this.redrawPreview(previous, next);
+    }
+  }
+
+  private redrawPreview(previous: string, next: string): void {
+    if (previous.length > 0) {
+      this.write(moveCursorToPreviewStart(previous));
+      this.write("\x1b[0J");
+      this.hasOutput = true;
+    }
+    this.writeRendered(next);
+  }
+
   private flush(markdown: string): void {
     if (markdown.length === 0) {
       return;
     }
     const output = renderMarkdown(markdown);
+    this.writeRendered(output);
+  }
+
+  private writeRendered(output: string): void {
     if (output.length === 0) {
       return;
     }
@@ -107,6 +320,18 @@ type Line = {
   raw: string;
   text: string;
   ended: boolean;
+};
+
+type ActiveFence = {
+  opening: string;
+  marker: "```" | "~~~";
+  content: string;
+  previewOutput: string;
+};
+
+type ActiveTable = {
+  markdown: string;
+  previewOutput: string;
 };
 
 function takeCompleteBlock(value: string): { block: string; rest: string } | null {
@@ -204,4 +429,21 @@ function renderMarkdown(value: string): string {
   } catch {
     return value;
   }
+}
+
+function trimFencePreviewOutput(value: string): string {
+  return value.endsWith("\n") ? value.slice(0, -1) : value;
+}
+
+function moveCursorToPreviewStart(value: string): string {
+  const lines = countRenderedLines(value);
+  return lines > 0 ? `\x1b[${lines}A` : "";
+}
+
+function countRenderedLines(value: string): number {
+  return (value.match(/\n/g) ?? []).length;
+}
+
+function supportsTerminalRedraw(): boolean {
+  return process.stdout.isTTY === true && process.env.TERM !== "dumb";
 }

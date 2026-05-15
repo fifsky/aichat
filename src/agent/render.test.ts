@@ -86,6 +86,58 @@ describe("TerminalRenderer", () => {
       capture.restore();
     }
   });
+
+  test("renders fenced code lines while streaming without printing fences", () => {
+    const capture = captureProcessOutput({ isTTY: false });
+
+    try {
+      const renderer = new TerminalRenderer(false);
+
+      renderer.appendText("```ts\n");
+      expect(capture.stdout()).toBe("");
+
+      renderer.appendText("const a = 1;\n");
+      expect(capture.stdout()).toContain("const a = 1;");
+      expect(capture.stdout()).not.toContain("```");
+
+      renderer.appendText("console.log(a);\n");
+      expect(capture.stdout()).toContain("console.log(a);");
+      expect(countOccurrences(capture.stdout(), "const a = 1;")).toBe(1);
+
+      renderer.appendText("```\n");
+      renderer.finish();
+
+      expect(capture.stdout()).not.toContain("```");
+      expect(countOccurrences(capture.stdout(), "const a = 1;")).toBe(1);
+      expect(countOccurrences(capture.stdout(), "console.log(a);")).toBe(1);
+    } finally {
+      capture.restore();
+    }
+  });
+
+  test("previews markdown tables while streaming in interactive terminals", () => {
+    const capture = captureProcessOutput({ isTTY: true, term: "xterm-256color" });
+
+    try {
+      const renderer = new TerminalRenderer(false);
+
+      renderer.appendText("| 项目 | 详情 |\n");
+      expect(capture.stdout()).toBe("");
+
+      renderer.appendText("|---|---|\n");
+      expect(capture.stdout()).toContain("┌");
+
+      renderer.appendText("| 天气 | 晴 |\n");
+      expect(capture.stdout()).toContain("\x1b[");
+      expect(capture.stdout()).toContain("天气");
+
+      renderer.appendText("\n");
+      renderer.finish();
+      expect(capture.stdout()).not.toContain("|---|---|");
+    } finally {
+      capture.restore();
+    }
+  });
 });
 
 function captureProcessOutput(options: { isTTY: boolean; term?: string }): {
