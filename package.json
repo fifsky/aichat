@@ -1,22 +1,51 @@
 {
-  "name": "aichat",
+  "name": "@fifsky/aichat",
   "version": "0.1.0",
+  "description": "A simple command-line AI agent with MCP and local skills.",
+  "license": "MIT",
   "bin": {
-    "ai": "./dist/ai"
+    "ai": "bin/ai"
   },
   "type": "module",
-  "private": true,
+  "files": [
+    "bin",
+    "src/**/*.ts",
+    "!src/**/*.test.ts",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fifsky/aichat.git"
+  },
+  "bugs": {
+    "url": "https://github.com/fifsky/aichat/issues"
+  },
+  "homepage": "https://github.com/fifsky/aichat#readme",
+  "keywords": [
+    "ai",
+    "agent",
+    "cli",
+    "mcp",
+    "skills"
+  ],
+  "engines": {
+    "bun": ">=1.1.0"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
   "scripts": {
     "dev": "bun run src/cli.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "build": "bun build src/cli.ts --compile --outfile dist/ai"
+    "build": "bun build src/cli.ts --compile --outfile dist/ai",
+    "prepublishOnly": "bun run typecheck && bun test"
   },
   "devDependencies": {
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
+    "@types/bun": "latest",
+    "typescript": "^5.9.3"
   },
   "dependencies": {
     "@ai-sdk/mcp": "^1.0.42",

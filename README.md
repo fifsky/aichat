@@ -4,6 +4,16 @@
 
 ## Usage
 
+安装前请先安装 [Bun](https://bun.sh/)。
+
+```bash
+npm install -g @fifsky/aichat
+ai --config
+ai 今天天气怎么样
+```
+
+本地开发：
+
 ```bash
 bun install
 bun run build
