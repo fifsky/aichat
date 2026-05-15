@@ -9,9 +9,7 @@ describe("TerminalRenderer", () => {
       const renderer = new TerminalRenderer(true);
 
       renderer.appendReasoning("The user asked for weather.");
-      renderer.toolStatus("[tool:bash] called");
       renderer.appendReasoning("\nThe command was denied.");
-      renderer.toolStatus("[tool:bash] result received");
       renderer.appendText("Here is the answer.");
       renderer.finish();
 
@@ -19,8 +17,6 @@ describe("TerminalRenderer", () => {
       expect(capture.stdout()).not.toContain("## 回答");
       expect(countOccurrences(capture.stdout(), "The user asked for weather.")).toBe(1);
       expect(capture.stdout()).toContain("Here is the answer.");
-      expect(capture.stderr()).toContain("[tool:bash] called");
-      expect(capture.stderr()).toContain("[tool:bash] result received");
     } finally {
       capture.restore();
     }
@@ -33,9 +29,7 @@ describe("TerminalRenderer", () => {
       const renderer = new TerminalRenderer(true);
 
       renderer.appendReasoning("The user asked for weather.");
-      renderer.toolStatus("[tool:bash] called");
       renderer.appendReasoning("\nThe command was denied.");
-      renderer.toolStatus("[tool:bash] result received");
       renderer.appendText("Here is the answer.");
       renderer.finish();
 
@@ -58,7 +52,6 @@ describe("TerminalRenderer", () => {
 
       renderer.appendReasoning("用户要求");
       renderer.appendReasoning("查询上海天气。");
-      renderer.toolStatus("[tool:bash] called");
       renderer.appendText("上海今天");
       renderer.appendText("多云。");
       renderer.finish();

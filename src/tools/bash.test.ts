@@ -1,13 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { isConfirmedAnswer } from "./bash";
+import { commandPrefixPattern } from "./bash";
 
 describe("bash tool confirmation", () => {
-  test("defaults empty confirmation to yes", () => {
-    expect(isConfirmedAnswer("")).toBe(true);
-    expect(isConfirmedAnswer("   ")).toBe(true);
-    expect(isConfirmedAnswer("y")).toBe(true);
-    expect(isConfirmedAnswer("yes")).toBe(true);
-    expect(isConfirmedAnswer("n")).toBe(false);
-    expect(isConfirmedAnswer("no")).toBe(false);
+  test("builds auto-approve patterns from command prefixes", () => {
+    expect(commandPrefixPattern("tvly search 上海天气")).toBe("tvly *");
+    expect(commandPrefixPattern("  npm run test")).toBe("npm *");
+    expect(commandPrefixPattern('"my cli" run')).toBe("my cli *");
+    expect(commandPrefixPattern("'custom tool' --version")).toBe("custom tool *");
   });
 });

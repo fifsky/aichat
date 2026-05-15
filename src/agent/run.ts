@@ -56,10 +56,8 @@ export async function runPrompt(config: AppConfig, prompt: string, skills: Skill
           renderer.appendReasoning(part.text);
           break;
         case "tool-call":
-          renderer.toolStatus(`[tool:${part.toolName}] called`);
           break;
         case "tool-result":
-          renderer.toolStatus(`[tool:${part.toolName}] result received`);
           break;
         case "tool-error":
           renderer.toolStatus(`[tool:${part.toolName}] failed`);

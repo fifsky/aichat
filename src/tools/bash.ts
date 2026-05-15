@@ -1,8 +1,14 @@
-import { createInterface } from "node:readline/promises";
-import { stdin as input, stderr as output } from "node:process";
+import { stderr as output, stdout as terminalOutput } from "node:process";
+import { isCancel, select } from "@clack/prompts";
 import { z } from "zod";
 import { tool, type ToolSet } from "ai";
 import type { AppConfig } from "../types";
+import { saveConfig } from "../config";
+
+type ConfirmAction = "approve" | "approve-and-remember" | "deny";
+type TerminalWriter = {
+  write(chunk: string): boolean;
+};
 
 export function createBashTool(config: AppConfig, extraPatterns: string[]): ToolSet {
   if (!config.tools.bash.enabled) {
@@ -24,8 +30,8 @@ export function createBashTool(config: AppConfig, extraPatterns: string[]): Tool
         const workingDir = cwd ?? process.cwd();
         const approved = autoApprove.some((pattern) => matchesPattern(pattern, command));
         if (!approved) {
-          const ok = await confirmCommand(command, workingDir);
-          if (!ok) {
+          const action = await confirmCommand(command);
+          if (action === "deny") {
             return {
               ok: false,
               denied: true,
@@ -34,9 +40,13 @@ export function createBashTool(config: AppConfig, extraPatterns: string[]): Tool
               exitCode: null,
             };
           }
+          if (action === "approve-and-remember") {
+            const pattern = commandPrefixPattern(command);
+            await addAutoApprovePattern(config, autoApprove, pattern);
+            output.write(`[tool:bash] added auto-approve pattern: ${pattern}\n`);
+          }
         }
 
-        output.write(`\n[tool:bash] ${approved ? "auto-approved" : "approved"} ${command}\n`);
         return runCommand(command, workingDir, timeoutMs ?? config.tools.bash.timeoutMs);
       },
     }),
@@ -51,8 +61,8 @@ async function runCommand(command: string, cwd: string, timeoutMs: number) {
     env: process.env,
   });
 
-  const stdoutPromise = new Response(proc.stdout).text();
-  const stderrPromise = new Response(proc.stderr).text();
+  const stdoutPromise = readAndForward(proc.stdout, terminalOutput);
+  const stderrPromise = readAndForward(proc.stderr, output);
   const timeout = setTimeout(() => {
     proc.kill();
   }, timeoutMs);
@@ -64,30 +74,74 @@ async function runCommand(command: string, cwd: string, timeoutMs: number) {
       ok: exitCode === 0,
       timedOut: false,
       exitCode,
-      stdout: truncate(stdout),
-      stderr: truncate(stderr),
+      stdout,
+      stderr,
     };
   } finally {
     clearTimeout(timeout);
   }
 }
 
-async function confirmCommand(command: string, cwd: string): Promise<boolean> {
-  output.write(`\n[tool:bash] The model wants to run a command.\n`);
-  output.write(`cwd: ${cwd}\n`);
-  output.write(`command: ${command}\n`);
-  const rl = createInterface({ input, output });
-  try {
-    const answer = await rl.question("Execute this command? [Y/n] ");
-    return isConfirmedAnswer(answer);
-  } finally {
-    rl.close();
+async function readAndForward(stream: ReadableStream<Uint8Array>, writer: TerminalWriter): Promise<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let result = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    const chunk = decoder.decode(value, { stream: true });
+    if (chunk) {
+      result += chunk;
+      writer.write(chunk);
+    }
   }
+
+  const tail = decoder.decode();
+  if (tail) {
+    result += tail;
+    writer.write(tail);
+  }
+
+  return result;
 }
 
-export function isConfirmedAnswer(answer: string): boolean {
-  const normalized = answer.trim().toLowerCase();
-  return normalized === "" || normalized === "y" || normalized === "yes";
+async function confirmCommand(command: string): Promise<ConfirmAction> {
+  const action = await select<ConfirmAction>({
+    message: `Execute command: ${command}`,
+    options: [
+      { value: "approve", label: "确认执行" },
+      {
+        value: "approve-and-remember",
+        label: "执行并记住前缀",
+        hint: commandPrefixPattern(command),
+      },
+      { value: "deny", label: "取消执行" },
+    ],
+  });
+
+  if (isCancel(action)) {
+    return "deny";
+  }
+  return action;
+}
+
+export function commandPrefixPattern(command: string): string {
+  const firstToken = command.trim().match(/^(?:"([^"]+)"|'([^']+)'|(\S+))/);
+  const commandName = firstToken?.[1] ?? firstToken?.[2] ?? firstToken?.[3] ?? command.trim();
+  return `${commandName} *`;
+}
+
+async function addAutoApprovePattern(config: AppConfig, currentPatterns: string[], pattern: string): Promise<void> {
+  if (!config.tools.bash.autoApprove.includes(pattern)) {
+    config.tools.bash.autoApprove = [...config.tools.bash.autoApprove, pattern];
+    await saveConfig(config);
+  }
+  if (!currentPatterns.includes(pattern)) {
+    currentPatterns.push(pattern);
+  }
 }
 
 function matchesPattern(pattern: string, command: string): boolean {
@@ -97,11 +151,4 @@ function matchesPattern(pattern: string, command: string): boolean {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
-}
-
-function truncate(value: string, max = 16_000): string {
-  if (value.length <= max) {
-    return value;
-  }
-  return `${value.slice(0, max)}\n...[truncated ${value.length - max} chars]`;
 }
