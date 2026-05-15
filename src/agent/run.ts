@@ -2,7 +2,7 @@ import { streamText, stepCountIs, type ModelMessage, type ToolSet } from "ai";
 import type { AppConfig, SessionMessage, Skill } from "../types";
 import { loadSession, saveSession } from "../session/store";
 import { createChatModel, providerOptions } from "../providers/deepseek";
-import { buildSkillsPrompt, collectSkillBashPatterns } from "../skills/loader";
+import { buildSkillsPrompt, collectSkillBashPatterns, createSkillActivationTool } from "../skills/loader";
 import { createBashTool } from "../tools/bash";
 import { loadMcpTools } from "../tools/mcp";
 import { TerminalRenderer } from "./render";
@@ -19,6 +19,7 @@ export async function runPrompt(config: AppConfig, prompt: string, skills: Skill
   try {
     const tools: ToolSet = {
       ...mcp.tools,
+      ...createSkillActivationTool(skills),
       ...createBashTool(config, collectSkillBashPatterns(skills)),
     };
 
