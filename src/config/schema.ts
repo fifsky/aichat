@@ -47,9 +47,9 @@ export const appConfigSchema = z.object({
   skills: z
     .object({
       enabled: z.boolean().default(true),
-      dirs: z.array(z.string()).default(["~/.codex/skills", "~/.agents/skills", "./skills"]),
+      dirs: z.array(z.string()).default(["~/.agents/skills"]),
     })
-    .default({ enabled: true, dirs: ["~/.codex/skills", "~/.agents/skills", "./skills"] }),
+    .default({ enabled: true, dirs: ["~/.agents/skills"] }),
   tools: z
     .object({
       bash: z

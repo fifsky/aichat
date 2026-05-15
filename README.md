@@ -29,6 +29,47 @@ ai --config --set provider.baseURL=https://api.deepseek.com --set provider.model
 
 配置路径为 `~/.config/aichat/aichat.json`。
 
+完整配置示例：
+
+```json
+{
+  "provider": {
+    "name": "deepseek",
+    "baseURL": "https://api.deepseek.com",
+    "apiKey": "sk-xxx",
+    "model": "deepseek-v4-pro",
+    "thinking": {
+      "enabled": true,
+      "reasoningEffort": "high",
+      "showReasoning": true
+    }
+  },
+  "mcpServers": {
+    "example": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@example/mcp-server"],
+      "env": {}
+    }
+  },
+  "skills": {
+    "enabled": true,
+    "dirs": ["~/.agents/skills"]
+  },
+  "tools": {
+    "bash": {
+      "enabled": true,
+      "autoApprove": ["tvly *"],
+      "timeoutMs": 60000
+    }
+  },
+  "session": {
+    "path": "~/.aichat/sessions/default.json",
+    "maxMessages": 100
+  }
+}
+```
+
 ## 清空上下文
 
 对话上下文会保存在 `~/.aichat/sessions/default.json`，上下文最多保留 100 条消息。如果需要重新开始一次干净的对话，可以执行：

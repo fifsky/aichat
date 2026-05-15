@@ -28,7 +28,7 @@ export function createBashTool(config: AppConfig, extraPatterns: string[]): Tool
       }),
       execute: async ({ command, cwd, timeoutMs }) => {
         const workingDir = cwd ?? process.cwd();
-        const approved = autoApprove.some((pattern) => matchesPattern(pattern, command));
+        const approved = isAutoApproved(autoApprove, command);
         if (!approved) {
           const action = await confirmCommand(command);
           if (action === "deny") {
@@ -45,6 +45,8 @@ export function createBashTool(config: AppConfig, extraPatterns: string[]): Tool
             await addAutoApprovePattern(config, autoApprove, pattern);
             output.write(`[tool:bash] added auto-approve pattern: ${pattern}\n`);
           }
+        } else {
+          output.write(`\nExecute command: ${command}\n`);
         }
 
         return runCommand(command, workingDir, timeoutMs ?? config.tools.bash.timeoutMs);
@@ -145,10 +147,26 @@ async function addAutoApprovePattern(config: AppConfig, currentPatterns: string[
 }
 
 function matchesPattern(pattern: string, command: string): boolean {
-  const regex = new RegExp(`^${escapeRegExp(pattern).replaceAll("\\*", ".*")}$`);
-  return regex.test(command.trim());
+  const regex = new RegExp(`^${globToRegex(pattern)}$`, "s");
+  return regex.test(normalizeCommand(command));
+}
+
+export function isAutoApproved(patterns: string[], command: string): boolean {
+  return isSimpleCommand(command) && patterns.some((pattern) => matchesPattern(pattern, command));
 }
 
 function escapeRegExp(value: string): string {
-  return value.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
+  return value.replace(/[|\\{}()[\]^$+?.*]/g, "\\$&");
+}
+
+function globToRegex(pattern: string): string {
+  return escapeRegExp(normalizeCommand(pattern)).replaceAll("\\*", ".*");
+}
+
+function normalizeCommand(command: string): string {
+  return command.trim().replace(/\s+/g, " ");
+}
+
+function isSimpleCommand(command: string): boolean {
+  return !/(^|[^&|;])(&&|\|\||;|\|)([^&|;]|$)/.test(command);
 }
