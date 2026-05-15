@@ -44,7 +44,7 @@ export async function runPrompt(config: AppConfig, prompt: string, skills: Skill
       ...session.messages,
       {
         role: "user",
-        content: prompt,
+        content: appendRuntimeContext(prompt),
       },
     ];
 
@@ -121,7 +121,7 @@ function buildBaseInstructions(mcpInstructions: string[]): string {
   return [
     "You are a command-line AI assistant.",
     "Answer in the same language as the user unless the user asks otherwise.",
-    currentDatePrompt(),
+    "Use the runtime context appended to the current user message when interpreting relative dates such as today, tomorrow, and yesterday.",
     "When the user's requirement is unclear or a necessary decision is missing, use the `ask` tool before making assumptions.",
     "The `ask` tool asks one question at a time. If multiple clarifications are needed, ask them step by step after each answer.",
     "For ask questions, keep options to five or fewer and use single choice, multiple choice, or free-form input as appropriate.",
@@ -131,6 +131,10 @@ function buildBaseInstructions(mcpInstructions: string[]): string {
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+function appendRuntimeContext(prompt: string): string {
+  return `${prompt}\n\n[Runtime context: ${currentDatePrompt()}]`;
 }
 
 function shouldShowToolStatus(toolName: string): boolean {
@@ -164,11 +168,14 @@ function currentDatePrompt(): string {
     pad(now.getMonth() + 1),
     pad(now.getDate()),
   ].join("-");
-  const localTime = [pad(now.getHours()), pad(now.getMinutes()), pad(now.getSeconds())].join(":");
 
-  return `Current local date/time: ${localDateTime} ${localTime} ${offset}. Use this when interpreting relative dates such as today, tomorrow, and yesterday.`;
+  return `current local date is ${localDateTime}, timezone is ${timeZone()} (${offset})`;
 }
 
 function pad(value: number): string {
   return value.toString().padStart(2, "0");
+}
+
+function timeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "local";
 }
