@@ -1,6 +1,4 @@
-import { readdir } from "node:fs/promises";
-import type { Dirent } from "node:fs";
-import { basename, dirname, relative, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { tool, type ToolSet } from "ai";
 import { z } from "zod";
 import { parseDocument } from "yaml";
@@ -34,9 +32,14 @@ export async function loadSkills(config: AppConfig): Promise<Skill[]> {
   }
 
   const skills: Skill[] = [];
+  const seenNames = new Set<string>();
   for (const file of new Set(files)) {
     const parsed = await parseSkillFile(file);
     if (parsed) {
+      if (seenNames.has(parsed.name)) {
+        continue;
+      }
+      seenNames.add(parsed.name);
       skills.push(parsed);
     }
   }
@@ -50,14 +53,15 @@ export function buildSkillsPrompt(skills: Skill[]): string {
   }
 
   const lines = [
-    "Local skills are available. Skills use progressive disclosure.",
-    "When a task matches a skill description, first call the activate_skill tool with that skill name to load the full SKILL.md instructions. Do this before using the skill's workflow, commands, scripts, references, or assets.",
-    "After activation, follow the loaded instructions exactly. Resolve relative paths against the skill directory returned by activate_skill.",
+    "## Skills",
+    "",
+    "Use the `loadSkill` tool to load a skill when the user's request would benefit from specialized instructions.",
+    "",
+    "Available skills:",
   ];
 
   for (const skill of skills) {
-    const allowed = skill.allowedBash.length ? ` Allowed Bash: ${skill.allowedBash.join(", ")}.` : "";
-    lines.push(`- ${skill.name}: ${skill.description} Location: ${skill.file}.${allowed}`);
+    lines.push(`- ${skill.name}: ${skill.description}`);
   }
 
   return lines.join("\n");
@@ -67,47 +71,33 @@ export function collectSkillBashPatterns(skills: Skill[]): string[] {
   return skills.flatMap((skill) => skill.allowedBash);
 }
 
-export function createSkillActivationTool(skills: Skill[]): ToolSet {
-  if (skills.length === 0) {
-    return {};
-  }
-
-  const names = skills.map((skill) => skill.name);
-  const inputSchema =
-    names.length === 1
-      ? z.object({ name: z.literal(names[0]!).describe("Skill name to activate.") })
-      : z.object({ name: z.enum(names as [string, ...string[]]).describe("Skill name to activate.") });
-
+export function createLoadSkillTool(): ToolSet {
   return {
-    activate_skill: tool({
-      description:
-        "Load the full instructions for an available local Agent Skill. Call this before using a skill when the user's task matches a skill description.",
-      inputSchema,
-      execute: async ({ name }) => activateSkill(skills, name),
+    loadSkill: tool({
+      description: "Load a skill to get specialized instructions.",
+      inputSchema: z.object({
+        name: z.string().describe("The skill name to load."),
+      }),
+      execute: async ({ name }, { experimental_context }) => {
+        const context = experimental_context as { skills?: Skill[] } | undefined;
+        return loadSkill(context?.skills ?? [], name);
+      },
     }),
   };
 }
 
-export async function activateSkill(skills: Skill[], name: string): Promise<string> {
-  const skill = skills.find((entry) => entry.name === name);
+export async function loadSkill(skills: Skill[], name: string) {
+  const skill = skills.find((entry) => entry.name.toLowerCase() === name.toLowerCase());
   if (!skill) {
-    return `<skill_error>Unknown skill "${name}". Available skills: ${skills.map((entry) => entry.name).join(", ")}</skill_error>`;
+    return { error: `Skill '${name}' not found` };
   }
 
   const content = await Bun.file(skill.file).text();
   const skillDir = dirname(skill.file);
-  const resources = await listSkillResources(skillDir);
-  const resourceLines = resources.map((file) => `  <file>${file}</file>`).join("\n");
-
-  return [
-    `<skill_content name="${escapeXml(skill.name)}">`,
-    content.trim(),
-    "",
-    `Skill directory: ${skillDir}`,
-    "Relative paths in this skill are relative to the skill directory.",
-    resources.length > 0 ? `<skill_resources>\n${resourceLines}\n</skill_resources>` : "<skill_resources />",
-    "</skill_content>",
-  ].join("\n");
+  return {
+    skillDirectory: skillDir,
+    content: stripFrontmatter(content),
+  };
 }
 
 async function parseSkillFile(file: string): Promise<Skill | undefined> {
@@ -146,6 +136,11 @@ function splitFrontmatter(text: string): { frontmatter: Frontmatter; body: strin
   return { frontmatter: parsed, body };
 }
 
+function stripFrontmatter(content: string): string {
+  const match = content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
+  return match ? content.slice(match[0].length).trim() : content.trim();
+}
+
 function normalizeDescription(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
@@ -169,46 +164,4 @@ function parseAllowedBash(value: string | string[] | undefined): string[] {
     }
   }
   return patterns;
-}
-
-async function listSkillResources(skillDir: string): Promise<string[]> {
-  const resources: string[] = [];
-  await collectResourceFiles(skillDir, skillDir, resources, 0);
-  return resources.filter((file) => file !== "SKILL.md").sort().slice(0, 200);
-}
-
-async function collectResourceFiles(root: string, dir: string, resources: string[], depth: number): Promise<void> {
-  if (depth > 4 || resources.length >= 200) {
-    return;
-  }
-
-  let entries: Dirent<string>[];
-  try {
-    entries = await readdir(dir, { withFileTypes: true, encoding: "utf8" });
-  } catch {
-    return;
-  }
-
-  for (const entry of entries) {
-    if (entry.name === ".git" || entry.name === "node_modules") {
-      continue;
-    }
-    const path = resolve(dir, entry.name);
-    if (entry.isDirectory()) {
-      await collectResourceFiles(root, path, resources, depth + 1);
-    } else if (entry.isFile()) {
-      resources.push(relative(root, path));
-    }
-    if (resources.length >= 200) {
-      return;
-    }
-  }
-}
-
-function escapeXml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
 }

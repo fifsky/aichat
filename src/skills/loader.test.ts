@@ -3,7 +3,7 @@ import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { defaultConfig } from "../config/schema";
-import { activateSkill, buildSkillsPrompt, collectSkillBashPatterns, loadSkills } from "./loader";
+import { buildSkillsPrompt, collectSkillBashPatterns, loadSkill, loadSkills } from "./loader";
 
 describe("skills loader", () => {
   test("loads SKILL.md frontmatter and bash patterns", async () => {
@@ -52,12 +52,12 @@ description: Search the web using Tavily.
     const skills = await loadSkills(config);
     const prompt = buildSkillsPrompt(skills);
 
-    expect(prompt).toContain("activate_skill");
+    expect(prompt).toContain("loadSkill");
     expect(prompt).toContain("tavily-search");
-    expect(prompt).toContain(join(skillDir, "SKILL.md"));
+    expect(prompt).not.toContain(join(skillDir, "SKILL.md"));
   });
 
-  test("activates a skill with full instructions and resource listing", async () => {
+  test("loads a skill with full body instructions", async () => {
     const dir = await mkdtemp(join(tmpdir(), "aichat-skills-"));
     const skillDir = join(dir, "tavily-search");
     await Bun.$`mkdir -p ${join(skillDir, "references")}`.quiet();
@@ -80,11 +80,11 @@ Use \`tvly search "AI news" --topic news --json\`.
     config.skills.dirs = [dir];
 
     const skills = await loadSkills(config);
-    const content = await activateSkill(skills, "tavily-search");
+    const result = await loadSkill(skills, "tavily-search");
 
-    expect(content).toContain('<skill_content name="tavily-search">');
-    expect(content).toContain('tvly search "AI news" --topic news --json');
-    expect(content).toContain(`Skill directory: ${skillDir}`);
-    expect(content).toContain("<file>references/usage.md</file>");
+    expect(result).toEqual({
+      skillDirectory: skillDir,
+      content: '# Tavily Search\n\nUse `tvly search "AI news" --topic news --json`.',
+    });
   });
 });

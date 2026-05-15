@@ -1,11 +1,26 @@
-import { streamText, stepCountIs, type ModelMessage, type ToolSet } from "ai";
+import { stepCountIs, ToolLoopAgent, type ModelMessage, type ToolSet } from "ai";
+import { z } from "zod";
 import type { AppConfig, SessionMessage, Skill } from "../types";
 import { loadSession, saveSession } from "../session/store";
 import { createChatModel, providerOptions } from "../providers/deepseek";
-import { buildSkillsPrompt, collectSkillBashPatterns, createSkillActivationTool } from "../skills/loader";
+import { buildSkillsPrompt, collectSkillBashPatterns, createLoadSkillTool } from "../skills/loader";
 import { createBashTool } from "../tools/bash";
 import { loadMcpTools } from "../tools/mcp";
 import { TerminalRenderer } from "./render";
+
+const callOptionsSchema = z.object({
+  skills: z.array(
+    z.object({
+      name: z.string(),
+      description: z.string(),
+      file: z.string(),
+      allowedBash: z.array(z.string()),
+      bodyPreview: z.string(),
+    }),
+  ),
+});
+
+type AgentCallOptions = z.infer<typeof callOptionsSchema>;
 
 export async function runPrompt(config: AppConfig, prompt: string, skills: Skill[]): Promise<void> {
   if (!config.provider.apiKey) {
@@ -19,7 +34,7 @@ export async function runPrompt(config: AppConfig, prompt: string, skills: Skill
   try {
     const tools: ToolSet = {
       ...mcp.tools,
-      ...createSkillActivationTool(skills),
+      ...createLoadSkillTool(),
       ...createBashTool(config, collectSkillBashPatterns(skills)),
     };
 
@@ -34,17 +49,25 @@ export async function runPrompt(config: AppConfig, prompt: string, skills: Skill
     const renderer = new TerminalRenderer(config.provider.thinking.showReasoning);
     let finalText = "";
 
-    const result = streamText({
+    const agent = new ToolLoopAgent<AgentCallOptions, ToolSet>({
       model,
-      messages,
       tools,
       stopWhen: stepCountIs(8),
       providerOptions: providerOptions(config),
-      system: buildSystemPrompt(skills, mcp.instructions),
-      onError: ({ error }) => {
-        const message = error instanceof Error ? error.message : String(error);
-        process.stderr.write(`\n[error] ${message}\n`);
-      },
+      instructions: buildBaseInstructions(mcp.instructions),
+      callOptionsSchema,
+      prepareCall: ({ options, ...settings }) => ({
+        ...settings,
+        instructions: `${settings.instructions ?? ""}\n\n${buildSkillsPrompt(options.skills)}`,
+        experimental_context: {
+          skills: options.skills,
+        },
+      }),
+    });
+
+    const result = await agent.stream({
+      messages,
+      options: { skills },
     });
 
     for await (const part of result.fullStream) {
@@ -57,8 +80,14 @@ export async function runPrompt(config: AppConfig, prompt: string, skills: Skill
           renderer.appendReasoning(part.text);
           break;
         case "tool-call":
+          if (shouldShowToolStatus(part.toolName)) {
+            renderer.toolStatus(`[mcp:${part.toolName}] calling ${formatToolInput(part.input)}`);
+          }
           break;
         case "tool-result":
+          if (shouldShowToolStatus(part.toolName)) {
+            renderer.toolStatus(`[mcp:${part.toolName}] completed`);
+          }
           break;
         case "tool-error":
           renderer.toolStatus(`[tool:${part.toolName}] failed`);
@@ -86,18 +115,36 @@ export async function runPrompt(config: AppConfig, prompt: string, skills: Skill
   }
 }
 
-function buildSystemPrompt(skills: Skill[], mcpInstructions: string[]): string {
+function buildBaseInstructions(mcpInstructions: string[]): string {
   return [
     "You are a non-interactive command-line AI assistant.",
     "Answer in the same language as the user unless the user asks otherwise.",
     currentDatePrompt(),
     "Use available MCP tools and local skills when they materially improve the answer.",
     "For current facts such as weather, news, prices, or schedules, use configured tools instead of guessing.",
-    buildSkillsPrompt(skills),
     ...mcpInstructions,
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+function shouldShowToolStatus(toolName: string): boolean {
+  return toolName !== "bash" && toolName !== "loadSkill";
+}
+
+function formatToolInput(input: unknown): string {
+  if (input == null) {
+    return "";
+  }
+  try {
+    const value = JSON.stringify(input);
+    if (!value || value === "{}") {
+      return "";
+    }
+    return value.length > 240 ? `${value.slice(0, 237)}...` : value;
+  } catch {
+    return "";
+  }
 }
 
 function currentDatePrompt(): string {
