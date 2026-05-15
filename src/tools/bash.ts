@@ -78,11 +78,16 @@ async function confirmCommand(command: string, cwd: string): Promise<boolean> {
   output.write(`command: ${command}\n`);
   const rl = createInterface({ input, output });
   try {
-    const answer = await rl.question("Execute this command? [y/N] ");
-    return answer.trim().toLowerCase() === "y";
+    const answer = await rl.question("Execute this command? [Y/n] ");
+    return isConfirmedAnswer(answer);
   } finally {
     rl.close();
   }
+}
+
+export function isConfirmedAnswer(answer: string): boolean {
+  const normalized = answer.trim().toLowerCase();
+  return normalized === "" || normalized === "y" || normalized === "yes";
 }
 
 function matchesPattern(pattern: string, command: string): boolean {

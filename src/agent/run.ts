@@ -91,6 +91,7 @@ function buildSystemPrompt(skills: Skill[], mcpInstructions: string[]): string {
   return [
     "You are a non-interactive command-line AI assistant.",
     "Answer in the same language as the user unless the user asks otherwise.",
+    currentDatePrompt(),
     "Use available MCP tools and local skills when they materially improve the answer.",
     "For current facts such as weather, news, prices, or schedules, use configured tools instead of guessing.",
     buildSkillsPrompt(skills),
@@ -98,4 +99,25 @@ function buildSystemPrompt(skills: Skill[], mcpInstructions: string[]): string {
   ]
     .filter(Boolean)
     .join("\n\n");
+}
+
+function currentDatePrompt(): string {
+  const now = new Date();
+  const offsetMinutes = -now.getTimezoneOffset();
+  const offsetSign = offsetMinutes >= 0 ? "+" : "-";
+  const offsetHours = Math.floor(Math.abs(offsetMinutes) / 60);
+  const offsetRemainder = Math.abs(offsetMinutes) % 60;
+  const offset = `GMT${offsetSign}${pad(offsetHours)}:${pad(offsetRemainder)}`;
+  const localDateTime = [
+    now.getFullYear(),
+    pad(now.getMonth() + 1),
+    pad(now.getDate()),
+  ].join("-");
+  const localTime = [pad(now.getHours()), pad(now.getMinutes()), pad(now.getSeconds())].join(":");
+
+  return `Current local date/time: ${localDateTime} ${localTime} ${offset}. Use this when interpreting relative dates such as today, tomorrow, and yesterday.`;
+}
+
+function pad(value: number): string {
+  return value.toString().padStart(2, "0");
 }
