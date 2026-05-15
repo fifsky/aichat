@@ -52,6 +52,11 @@ export const appConfigSchema = z.object({
     .default({ enabled: true, dirs: ["~/.agents/skills"] }),
   tools: z
     .object({
+      ask: z
+        .object({
+          enabled: z.boolean().default(true),
+        })
+        .default({ enabled: true }),
       bash: z
         .object({
           enabled: z.boolean().default(true),
@@ -60,7 +65,7 @@ export const appConfigSchema = z.object({
         })
         .default({ enabled: true, autoApprove: ["tvly *"], timeoutMs: 60_000 }),
     })
-    .default({ bash: { enabled: true, autoApprove: ["tvly *"], timeoutMs: 60_000 } }),
+    .default({ ask: { enabled: true }, bash: { enabled: true, autoApprove: ["tvly *"], timeoutMs: 60_000 } }),
   session: z
     .object({
       path: z.string().default(DEFAULT_SESSION_PATH),

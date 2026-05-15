@@ -4,6 +4,7 @@ import type { AppConfig, SessionMessage, Skill } from "../types";
 import { loadSession, saveSession } from "../session/store";
 import { createChatModel, providerOptions } from "../providers/deepseek";
 import { buildSkillsPrompt, collectSkillBashPatterns, createLoadSkillTool } from "../skills/loader";
+import { createAskTool } from "../tools/ask";
 import { createBashTool } from "../tools/bash";
 import { loadMcpTools } from "../tools/mcp";
 import { TerminalRenderer } from "./render";
@@ -35,6 +36,7 @@ export async function runPrompt(config: AppConfig, prompt: string, skills: Skill
     const tools: ToolSet = {
       ...mcp.tools,
       ...createLoadSkillTool(),
+      ...createAskTool(config),
       ...createBashTool(config, collectSkillBashPatterns(skills)),
     };
 
@@ -117,9 +119,12 @@ export async function runPrompt(config: AppConfig, prompt: string, skills: Skill
 
 function buildBaseInstructions(mcpInstructions: string[]): string {
   return [
-    "You are a non-interactive command-line AI assistant.",
+    "You are a command-line AI assistant.",
     "Answer in the same language as the user unless the user asks otherwise.",
     currentDatePrompt(),
+    "When the user's requirement is unclear or a necessary decision is missing, use the `ask` tool before making assumptions.",
+    "The `ask` tool asks one question at a time. If multiple clarifications are needed, ask them step by step after each answer.",
+    "For ask questions, keep options to five or fewer and use single choice, multiple choice, or free-form input as appropriate.",
     "Use available MCP tools and local skills when they materially improve the answer.",
     "For current facts such as weather, news, prices, or schedules, use configured tools instead of guessing.",
     ...mcpInstructions,
@@ -129,7 +134,7 @@ function buildBaseInstructions(mcpInstructions: string[]): string {
 }
 
 function shouldShowToolStatus(toolName: string): boolean {
-  return toolName !== "bash" && toolName !== "loadSkill";
+  return toolName !== "ask" && toolName !== "bash" && toolName !== "loadSkill";
 }
 
 function formatToolInput(input: unknown): string {

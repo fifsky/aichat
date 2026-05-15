@@ -33,6 +33,9 @@ export type AppConfig = {
     dirs: string[];
   };
   tools: {
+    ask: {
+      enabled: boolean;
+    };
     bash: {
       enabled: boolean;
       autoApprove: string[];

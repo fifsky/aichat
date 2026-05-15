@@ -8,6 +8,7 @@ describe("config", () => {
     expect(defaultConfig.provider.model).toBe("deepseek-v4-pro");
     expect(defaultConfig.provider.thinking.enabled).toBe(true);
     expect(defaultConfig.skills.dirs).toEqual(["~/.agents/skills"]);
+    expect(defaultConfig.tools.ask.enabled).toBe(true);
     expect(defaultConfig.tools.bash.autoApprove).toContain("tvly *");
   });
 

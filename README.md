@@ -57,6 +57,9 @@ ai --config --set provider.baseURL=https://api.deepseek.com --set provider.model
     "dirs": ["~/.agents/skills"]
   },
   "tools": {
+    "ask": {
+      "enabled": true
+    },
     "bash": {
       "enabled": true,
       "autoApprove": ["tvly *"],
@@ -83,3 +86,7 @@ ai --clean
 ai agent会自动加载`~/.agents/skills`目录下的所有文件作为 skills, 并通过内置的 Bash 工具执行。
 
 Bash 工具默认只自动批准`tvly *`，其他命令会在终端确认后执行。
+
+## Ask 工具
+
+当 AI 对需求理解不清晰、缺少必要决策时，会使用内置的 `ask` 工具向用户追问。Ask 使用 `@clack/prompts` 组件渲染终端交互，支持单选、多选和自定义输入；每个问题最多展示 5 个选项。如果需要澄清多个问题，AI 会按步骤逐个询问。
