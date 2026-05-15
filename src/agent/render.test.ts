@@ -65,6 +65,27 @@ describe("TerminalRenderer", () => {
       capture.restore();
     }
   });
+
+  test("renders markdown tables while streaming once the table block is complete", () => {
+    const capture = captureProcessOutput({ isTTY: true, term: "xterm-256color" });
+
+    try {
+      const renderer = new TerminalRenderer(false);
+
+      renderer.appendText("| 项目 | 详情 |\n");
+      renderer.appendText("|---|---|\n");
+      renderer.appendText("| 天气 | 晴 |\n\n");
+
+      expect(capture.stdout()).toContain("┌");
+      expect(capture.stdout()).toContain("┬");
+      expect(capture.stdout()).toContain("天气");
+      expect(capture.stdout()).not.toContain("|---|---|");
+
+      renderer.finish();
+    } finally {
+      capture.restore();
+    }
+  });
 });
 
 function captureProcessOutput(options: { isTTY: boolean; term?: string }): {
