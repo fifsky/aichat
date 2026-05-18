@@ -20,10 +20,7 @@ export class TerminalRenderer {
     if (delta.length === 0) {
       return;
     }
-    if (this.wroteOutput && !this.separatedAnswer) {
-      process.stdout.write("\n\n");
-      this.separatedAnswer = true;
-    }
+    this.separateAnswerFromReasoning();
     this.markdown.append(delta);
   }
 
@@ -54,6 +51,18 @@ export class TerminalRenderer {
   private write(value: string): void {
     process.stdout.write(value);
     this.wroteOutput = true;
+  }
+
+  private separateAnswerFromReasoning(): void {
+    if (!this.wroteReasoning || this.separatedAnswer) {
+      return;
+    }
+
+    const neededLineBreaks = Math.max(0, 2 - countTrailingLineBreaks(this.reasoning));
+    if (neededLineBreaks > 0) {
+      this.write("\n".repeat(neededLineBreaks));
+    }
+    this.separatedAnswer = true;
   }
 
   private writeReasoning(value: string): void {
@@ -442,6 +451,10 @@ function moveCursorToPreviewStart(value: string): string {
 
 function countRenderedLines(value: string): number {
   return (value.match(/\n/g) ?? []).length;
+}
+
+function countTrailingLineBreaks(value: string): number {
+  return value.match(/(?:\r?\n)+$/)?.[0].match(/\n/g)?.length ?? 0;
 }
 
 function supportsTerminalRedraw(): boolean {

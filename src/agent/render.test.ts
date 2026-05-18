@@ -66,6 +66,39 @@ describe("TerminalRenderer", () => {
     }
   });
 
+  test("keeps answer on a new paragraph after reasoning without trailing newline", () => {
+    const capture = captureProcessOutput({ isTTY: false });
+
+    try {
+      const renderer = new TerminalRenderer(true);
+
+      renderer.appendReasoning("思考结束");
+      renderer.appendText("正文开始");
+      renderer.finish();
+
+      expect(capture.stdout()).toContain("思考结束\n\n正文开始");
+    } finally {
+      capture.restore();
+    }
+  });
+
+  test("does not add extra blank lines when reasoning already ends with a paragraph break", () => {
+    const capture = captureProcessOutput({ isTTY: false });
+
+    try {
+      const renderer = new TerminalRenderer(true);
+
+      renderer.appendReasoning("思考结束\n\n");
+      renderer.appendText("正文开始");
+      renderer.finish();
+
+      expect(capture.stdout()).toContain("思考结束\n\n正文开始");
+      expect(capture.stdout()).not.toContain("思考结束\n\n\n正文开始");
+    } finally {
+      capture.restore();
+    }
+  });
+
   test("renders markdown tables while streaming once the table block is complete", () => {
     const capture = captureProcessOutput({ isTTY: true, term: "xterm-256color" });
 
